@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -40,6 +40,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+CAN_HandleTypeDef hcan;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -64,7 +66,7 @@ unsigned char dir,dir1;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
-
+static void MX_CAN_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -103,6 +105,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
+  MX_CAN_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, Rx_data, 1);
   /* USER CODE END 2 */
@@ -152,6 +155,43 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief CAN Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_CAN_Init(void)
+{
+
+  /* USER CODE BEGIN CAN_Init 0 */
+
+  /* USER CODE END CAN_Init 0 */
+
+  /* USER CODE BEGIN CAN_Init 1 */
+
+  /* USER CODE END CAN_Init 1 */
+  hcan.Instance = CAN1;
+  hcan.Init.Prescaler = 16;
+  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_1TQ;
+  hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan.Init.TimeTriggeredMode = DISABLE;
+  hcan.Init.AutoBusOff = DISABLE;
+  hcan.Init.AutoWakeUp = DISABLE;
+  hcan.Init.AutoRetransmission = DISABLE;
+  hcan.Init.ReceiveFifoLocked = DISABLE;
+  hcan.Init.TransmitFifoPriority = DISABLE;
+  if (HAL_CAN_Init(&hcan) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN_Init 2 */
+
+  /* USER CODE END CAN_Init 2 */
+
 }
 
 /**
@@ -210,61 +250,108 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
     Gpsdata = Rx_data[0];
     flg = 1;
 
+
     if(finish == 0){
         //check for #GPRMC which specifies the message type
-            if (Gpsdata == '$' && pos_cnt == 0) {
-                pos_cnt = 1;
-            }
-            if (Gpsdata == 'G' && pos_cnt == 1) {
-                pos_cnt = 2;
-            }
-            if (Gpsdata == 'P' && pos_cnt == 2) {
-                pos_cnt = 3;
-            }
-            if (Gpsdata == 'R' && pos_cnt == 3) {
-                pos_cnt = 4;
-            }
-            if (Gpsdata == 'M' && pos_cnt == 4) {
-                pos_cnt = 5;
-            }
-            if (Gpsdata == 'C' && pos_cnt == 5) {
-                pos_cnt = 6;
-            }
-            if (pos_cnt == 6){
-            	if(debug_ct< 100){
-            	                  debug[debug_ct] = Gpsdata;
-            	                  debug_ct++;
-            	                  }
-            }
-            if (pos_cnt == 6 && Gpsdata == ',') { // count commas in message
-                com_cnt++;
-                flg = 0;
 
-            }
+    		if (pos_cnt == 0) {
+    			if (Gpsdata == '$') {
+    				pos_cnt = 1;
+    			} else {
+    				pos_cnt = 0;
+    			}
+    		}
+    		else if (pos_cnt == 1) {
+    			if (Gpsdata == 'G') {
+					pos_cnt = 2;
+				} else {
+					pos_cnt = 0;
+				}
+    		}
+    		else if (pos_cnt == 2) {
+    			if (Gpsdata == 'N') {
+					pos_cnt = 3;
+				} else {
+					pos_cnt = 0;
+				}
+			}
+    		else if (pos_cnt == 3) {
+				if (Gpsdata == 'R') {
+					pos_cnt = 4;
+				} else {
+					pos_cnt = 0;
+				}
+			}
+    		else if (pos_cnt == 4) {
+				if (Gpsdata == 'M') {
+					pos_cnt = 5;
+				} else {
+					pos_cnt = 0;
+				}
+			}
+    		else if (pos_cnt == 5) {
+				if (Gpsdata == 'C') {
+					pos_cnt = 6;
+				} else {
+					pos_cnt = 0;
+				}
+			}
 
-            if(Gpsdata=='N' || Gpsdata=='S'){dir=Gpsdata;}
-            if(Gpsdata=='E' || Gpsdata=='W'){dir1=Gpsdata;}
+    		else if (pos_cnt == 6) {
+				if (Gpsdata == ',') {
+					com_cnt+=1;
+				} else if (com_cnt == 2) {
+					if (Gpsdata == 'A') {
+						com_cnt = 5;
+					} else if (Gpsdata == 'V') {
+						com_cnt = 5;
+					} else {
+						com_cnt = 5;
+					}
+				}
 
-            if (com_cnt == 3 && flg == 1) {
-                    lat[lat_cnt++] = Gpsdata; // latitude
-                    flg = 0;
-            }
-            if (com_cnt == 5 && flg == 1) {
-                    lg[log_cnt++] = Gpsdata; // longitude
-                    flg = 0;
-            }
-            if (Gpsdata == '*' && com_cnt >= 5 && flg == 1) {
-                        lat[lat_cnt] = dir;
-                        lat[lat_cnt + 1] = '\0'; // end of GPRMC message
-                        lg[log_cnt] = dir1;
-                        lg[log_cnt + 1] = '\0';
-                        lat_cnt = 0;
-                        log_cnt = 0;
-                        flg = 0;
-                        finish = 1;
-                        com_cnt = 0;
-                        i = 0;
-            }
+    			if (Gpsdata == '*') {
+					pos_cnt = 0;
+					debug_ct = 0;
+					com_cnt=0;
+					memset(debug, 0, sizeof debug);
+				} else if(debug_ct< 100){
+					debug[debug_ct] = Gpsdata;
+					debug_ct++;
+				}
+			}
+
+
+
+//            if (pos_cnt == 6 && Gpsdata == ',') { // count commas in message
+//                com_cnt++;
+//                flg = 0;
+//
+//            }
+//
+//            if(Gpsdata=='N' || Gpsdata=='S'){dir=Gpsdata;}
+//            if(Gpsdata=='E' || Gpsdata=='W'){dir1=Gpsdata;}
+//
+//            if (com_cnt == 3 && flg == 1) {
+//                    lat[lat_cnt++] = Gpsdata; // latitude
+//                    flg = 0;
+//            }
+//            if (com_cnt == 5 && flg == 1) {
+//                    lg[log_cnt++] = Gpsdata; // longitude
+//                    flg = 0;
+//            }
+//            if (Gpsdata == '*' && com_cnt >= 5 && flg == 1) {
+//                        lat[lat_cnt] = dir;
+//                        lat[lat_cnt + 1] = '\0'; // end of GPRMC message
+//                        lg[log_cnt] = dir1;
+//                        lg[log_cnt + 1] = '\0';
+//                        lat_cnt = 0;
+//                        log_cnt = 0;
+//                        flg = 0;
+//                        finish = 1;
+//                        com_cnt = 0;
+//                        i = 0;
+//            }
     }
 
 
