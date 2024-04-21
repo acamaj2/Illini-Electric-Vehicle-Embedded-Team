@@ -45,19 +45,22 @@ CAN_HandleTypeDef hcan;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t Rx_data[1024];
-uint8_t debug[100];
+uint8_t Rx_data[1024];				// load incoming GPS data here in byte by byte
+uint8_t debug[100];					// use this array to see debug values (printing is not supported)
 unsigned int debug_ct = 0;
 
-volatile unsigned char Gpsdata;             // for incoming serial data
-unsigned int finish =0;            // indicate end of message
-unsigned int pos_cnt=0;            // position counter
-unsigned int lat_cnt=0;            // latitude data counter
-unsigned int log_cnt=0;            // longitude data counter
-unsigned int flg    =0;            // GPS flag
-unsigned int com_cnt=0;            // comma counter
-unsigned char lat[20];             // latitude array
-unsigned char lg[20];              // longitude array
+//used to parse message when reading byte by byte
+volatile unsigned char Gpsdata;    	// one byte of incoming GPSdata
+unsigned int finish =0;            	// indicate end of message
+unsigned int pos_cnt=0;            	// keep track of how many bytes you have read so far
+unsigned int lat_cnt=0;            	// latitude data counter (NOT USED YET)
+unsigned int log_cnt=0;            	// longitude data counter (NOT USED YET)
+unsigned int com_cnt=0;            	// count commas to parse message
+
+//store values here before sending them over CAN Buses 7, 8, and 9
+unsigned char lat[20];             	// store latitude here
+unsigned char lg[20];              	// store longitude here
+unsigned int num_SV=0;				// store number of satellites here
 int i=0;
 unsigned char dir,dir1;
 /* USER CODE END PV */
@@ -107,7 +110,10 @@ int main(void)
   MX_USART1_UART_Init();
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
+
+  //Enter the interrupt when UART receives data load one byte into Rx_data
   HAL_UART_Receive_IT(&huart1, Rx_data, 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -247,85 +253,89 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
 {
-    Gpsdata = Rx_data[0];
-    flg = 1;
+    // We will use Gpsdata from here on
+	Gpsdata = Rx_data[0];
 
+	// We want to read bytes until we see the string "$GNRMC" which indicates the start of the NMEA message
+	if (pos_cnt == 0) {
+		if (Gpsdata == '$') {
+			pos_cnt = 1;
+		} else {
+			pos_cnt = 0;
+		}
+	}
+	else if (pos_cnt == 1) {
+		if (Gpsdata == 'G') {
+			pos_cnt = 2;
+		} else {
+			pos_cnt = 0;
+		}
+	}
+	else if (pos_cnt == 2) {
+		if (Gpsdata == 'N') {
+			pos_cnt = 3;
+		} else {
+			pos_cnt = 0;
+		}
+	}
+	else if (pos_cnt == 3) {
+		if (Gpsdata == 'R') {
+			pos_cnt = 4;
+		} else {
+			pos_cnt = 0;
+		}
+	}
+	else if (pos_cnt == 4) {
+		if (Gpsdata == 'M') {
+			pos_cnt = 5;
+		} else {
+			pos_cnt = 0;
+		}
+	}
+	else if (pos_cnt == 5) {
+		if (Gpsdata == 'C') {
+			pos_cnt = 6;
+		} else {
+			pos_cnt = 0;
+		}
+	}
 
-    if(finish == 0){
-        //check for #GPRMC which specifies the message type
-
-    		if (pos_cnt == 0) {
-    			if (Gpsdata == '$') {
-    				pos_cnt = 1;
-    			} else {
-    				pos_cnt = 0;
-    			}
-    		}
-    		else if (pos_cnt == 1) {
-    			if (Gpsdata == 'G') {
-					pos_cnt = 2;
-				} else {
-					pos_cnt = 0;
-				}
-    		}
-    		else if (pos_cnt == 2) {
-    			if (Gpsdata == 'N') {
-					pos_cnt = 3;
-				} else {
-					pos_cnt = 0;
-				}
+	// If we reach this point we have seen the entire "$GNRMC" message
+	else if (pos_cnt == 6) {
+		if (Gpsdata == ',') {
+			com_cnt+=1;
+		// At comma position 2 we have either an A for active data, or a V for void data
+		// to debug add a breakpoint on line 311 and if the program stops here you know there is valid data to read
+		} else if (com_cnt == 2) {
+			if (Gpsdata == 'A') {
+				com_cnt = 5;
+			} else if (Gpsdata == 'V') {
+				com_cnt = 5;
+			} else {
+			// you never know
+				com_cnt = 5;
 			}
-    		else if (pos_cnt == 3) {
-				if (Gpsdata == 'R') {
-					pos_cnt = 4;
-				} else {
-					pos_cnt = 0;
-				}
-			}
-    		else if (pos_cnt == 4) {
-				if (Gpsdata == 'M') {
-					pos_cnt = 5;
-				} else {
-					pos_cnt = 0;
-				}
-			}
-    		else if (pos_cnt == 5) {
-				if (Gpsdata == 'C') {
-					pos_cnt = 6;
-				} else {
-					pos_cnt = 0;
-				}
-			}
+		}
 
-    		else if (pos_cnt == 6) {
-				if (Gpsdata == ',') {
-					com_cnt+=1;
-				} else if (com_cnt == 2) {
-					if (Gpsdata == 'A') {
-						com_cnt = 5;
-					} else if (Gpsdata == 'V') {
-						com_cnt = 5;
-					} else {
-						com_cnt = 5;
-					}
-				}
-
-    			if (Gpsdata == '*') {
-					pos_cnt = 0;
-					debug_ct = 0;
-					com_cnt=0;
-					memset(debug, 0, sizeof debug);
-				} else if(debug_ct< 100){
-					debug[debug_ct] = Gpsdata;
-					debug_ct++;
-				}
-			}
+		// when you see the * this is the end of the message. Here we reset the counters and debugging arrays
+		if (Gpsdata == '*') {
+			pos_cnt = 0;
+			debug_ct = 0;
+			com_cnt=0;
+			memset(debug, 0, sizeof debug);
+		//if we are not at the end of the message and it is not a comma load it into the debug array
+		} else if(debug_ct< 100){
+			debug[debug_ct] = Gpsdata;
+			debug_ct++;
+		}
+	}
 
 
+
+// WHEN INCOMING DATA IS NOT VOID YOU CAN USE SIMILAR CODE TO PUlL OUT LATITUDE, LONGITUDE, AND NUMBER OF SATELLITES
 
 //            if (pos_cnt == 6 && Gpsdata == ',') { // count commas in message
 //                com_cnt++;
-//                flg = 0;
 //
 //            }
 //
@@ -334,11 +344,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
 //
 //            if (com_cnt == 3 && flg == 1) {
 //                    lat[lat_cnt++] = Gpsdata; // latitude
-//                    flg = 0;
 //            }
 //            if (com_cnt == 5 && flg == 1) {
 //                    lg[log_cnt++] = Gpsdata; // longitude
-//                    flg = 0;
 //            }
 //            if (Gpsdata == '*' && com_cnt >= 5 && flg == 1) {
 //                        lat[lat_cnt] = dir;
@@ -347,14 +355,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
 //                        lg[log_cnt + 1] = '\0';
 //                        lat_cnt = 0;
 //                        log_cnt = 0;
-//                        flg = 0;
 //                        finish = 1;
 //                        com_cnt = 0;
 //                        i = 0;
 //            }
-    }
+
+//END OF SAMPLE CODE
 
 
+	//reset our interrupt to wait for the next incoming byte of data
     HAL_UART_Receive_IT(&huart1, Rx_data, 1);
 }
 
