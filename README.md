@@ -1,5 +1,13 @@
 # GPS 23-24
 
+## Name
+
+GPS code to put onto the telemetry board for Illini EV Concept created by Zachary Takiff and Alex **\_\_**
+
+## Description
+
+The current state of the code will read in data byte by byte from the GPS chip (over UART) and we have set up debugging to test whether the incoming data is Active of Void. Once we can get the hardware working the next step is to pull out latitude, longitude and number of satellites out of the message. This data will be sent over CAN and can be processed over telemetry to map out car location and signal strength.
+
 ## Getting started
 
 To run this project in STM32CubeIDE clone this repo to your computer then follow these steps
@@ -16,14 +24,6 @@ Using default settings set root directory to the GPS folder within your cloned r
 Select finish to complete the import process
 
 ![alt text](images/step3.png)
-
-## Name
-
-GPS code to put onto the telemetry board for Illini EV Concept created by Zachary Takiff and Alex **\_\_**
-
-## Description
-
-The current state of the code will read in data byte by byte from the GPS chip (over UART) and we have set up debugging to test whether the incoming data is Active of Void. Once we can get the hardware working the next step is to pull out latitude, longitude and number of satellites out of the message. This data will be sent over CAN and can be processed over telemetry to map out car location and signal strength.
 
 ## Problems
 
