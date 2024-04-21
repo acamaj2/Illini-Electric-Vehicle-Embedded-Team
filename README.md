@@ -2,7 +2,7 @@
 
 ## Name
 
-GPS code to put onto the telemetry board for Illini EV Concept created by Zachary Takiff and Alex **\_\_**
+GPS code to put onto the telemetry board for Illini EV Concept created by Zachary Takiff and Alex Camaj
 
 ## Description
 
